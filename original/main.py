@@ -6,7 +6,7 @@ Main script to automate flight deal discovery:
 2. Ensure each destination has a valid IATA code (via Amadeus API).
 3. Search for flight offers from a fixed origin to each destination.
 4. If no direct flights exist, retry with stopovers allowed.
-5. Print all found offers, pick the cheapest, and notify user if it’s below the threshold.
+5. Print all found offers, pick the cheapest, and notify user if it's below the threshold.
 
 Dependencies:
 - data_manager.py
@@ -16,8 +16,13 @@ Dependencies:
 - .env file with Sheety, Amadeus, Twilio, and Email credentials.
 """
 
+import sys
 import time
+from pathlib import Path
 from datetime import datetime, timedelta
+
+sys.path.insert(0, str(Path(__file__).parent))
+
 from data_manager import DataManager
 from flight_search import FlightSearch
 from flight_data import find_cheapest_flight, FlightData

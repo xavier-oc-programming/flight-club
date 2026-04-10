@@ -1,3 +1,10 @@
+# Python 3.10+ required (uses X | Y union types in type hints)
+
+# HTTP requests
+requests==2.32.3
+
+# Environment variable loading
 python-dotenv==1.0.1
-Requests==2.32.3
+
+# SMS / WhatsApp notifications
 twilio==9.1.1
