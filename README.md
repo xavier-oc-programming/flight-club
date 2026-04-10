@@ -1,12 +1,12 @@
 # Flight Club — Automated Flight Deal Scanner
 
-Automated flight deal scanner that monitors destination prices via the Amadeus API and notifies users by SMS and email when a fare drops below a user-defined threshold.
+Automated flight deal scanner that searches Google Flights via SerpApi and notifies users by WhatsApp and email when a fare drops below a user-defined threshold.
 
-For example, if you set London's threshold to €50, the bot searches all available round-trips from Madrid (MAD) to London across the next six months. When it finds a fare of €42, it sends you an SMS — "Flight Deal Alert! MAD → LHR = 42.0 EUR [2025-11-03 TO 2025-11-10] (Round Trip)" — and emails the same alert to every address registered in your Google Sheet.
+For example, if you set Frankfurt's threshold to €400, the bot searches round-trips from Madrid (MAD) to Frankfurt for the next six months. When it finds a fare of €378, it sends a WhatsApp message — "✈️ Flight Deal Alert! MAD → FRA (Frankfurt) | Price: 378.0 EUR | Depart: 2026-04-11 | Return: 2026-10-07" — and emails the same alert to every address registered in your Google Sheet.
 
 Two builds are included. The **original** build is the course exercise as written: a single orchestration file that imports the helper modules verbatim, with only path fixes applied. The **advanced** build extracts every magic number and URL into `config.py`, refactors `NotificationManager` into a leaner `Notifier` that accepts plain strings (no hidden API calls inside), and wires everything through a clean `main()` function — making it easy to extend, test, or swap out any single component.
 
-External services: **Amadeus** (OAuth2 flight search + IATA lookup), **Sheety** (Google Sheet as REST API for destinations and registered users), **Twilio** (SMS), and **Gmail SMTP** (email). Each requires its own credentials stored in `.env`.
+External services: **SerpApi** (Google Flights search), **Sheety** (Google Sheet as REST API for destinations and registered users), **Twilio** (WhatsApp), and **Gmail SMTP** (email). Each requires its own credentials stored in `.env`.
 
 ---
 
@@ -34,15 +34,17 @@ External services: **Amadeus** (OAuth2 flight search + IATA lookup), **Sheety** 
 
 | Service | What you need | Where to get it |
 |---------|--------------|-----------------|
-| Amadeus | API Key + Secret (free test account) | [developer.amadeus.com](https://developer.amadeus.com) → My Apps |
+| SerpApi | API key (free tier: 100 searches/month) | [serpapi.com](https://serpapi.com) → Dashboard → API Key |
 | Sheety | Endpoint URL + Basic Auth credentials | [sheety.co](https://sheety.co) → create project from your Google Sheet |
-| Twilio | Account SID + Auth Token + phone number | [twilio.com](https://twilio.com) → Console Dashboard |
+| Twilio | Account SID + Auth Token + WhatsApp sandbox | [twilio.com](https://twilio.com) → Messaging → Try it out → Send a WhatsApp message |
 | Gmail | App Password (16 chars, requires 2FA) | myaccount.google.com → Security → App Passwords |
 
 **Google Sheet structure required:**
 
 *prices* sheet — columns: `city`, `iataCode`, `lowestPrice`
 *users* sheet — columns: `whatIsYourFirstName?`, `whatIsYourLastName?`, `whatIsYourEmail?`
+
+> **Note:** SerpApi has no IATA lookup endpoint. Airport codes must be entered directly in the `iataCode` column of the sheet before running.
 
 ---
 
@@ -68,10 +70,12 @@ python advanced/main.py
 | Feature | Original | Advanced |
 |---------|----------|----------|
 | Entry point | `original/main.py` | `advanced/main.py` |
+| Flight API | SerpApi (Google Flights) | SerpApi (Google Flights) |
+| Notification | WhatsApp + Email | WhatsApp + Email |
 | Constants | Inline | `config.py` |
 | `Notifier` | Fetches emails internally | Accepts recipients list (injected) |
 | `load_dotenv` path | Relative (cwd-dependent) | Absolute (`Path(__file__).parent.parent`) |
-| Print statements | Emoji-heavy | Clean output |
+| Print style | Emoji-heavy | Clean structured output |
 | Module imports | Flat (same directory) | `sys.path.insert` + explicit `.env` path |
 
 ---
@@ -83,8 +87,7 @@ python menu.py
 ```
 
 ```
- ███████╗██╗     ██╗ ██████╗ ██╗  ██╗████████╗ ...
- ...
+ ███████╗██╗     ██╗ ██████╗ ...
 ======================================================================
   Select a build to run:
 
@@ -96,19 +99,29 @@ python menu.py
 
 Your choice: 2
 
-Token retrieved. Expires in 1799 seconds.
-Searching round-trip flights from MAD...
+Scanning flights from MAD
 
-Checking flights to Paris (PAR)...
-Found flight options:
-  MAD -> CDG = 49.99 EUR [2025-11-03 TO 2025-11-10] (Round Trip)
-  MAD -> ORY = 54.20 EUR [2025-11-07 TO 2025-11-14] (Round Trip)
+──────────────────────────────────────────────────
+Frankfurt (FRA)
+  MAD -> FRA = 378.0 EUR [2026-04-11 TO 2026-10-07] (Round Trip)
+  MAD -> FRA = 653.0 EUR [2026-04-11 TO 2026-10-07] (Round Trip) | Stops: 1 via AMS
 
-Cheapest: MAD -> CDG = 49.99 EUR [2025-11-03 TO 2025-11-10] (Round Trip)
-Threshold: 54 EUR
-Price below threshold — sending notifications...
-SMS sent. SID: SM...
-Email sent to alice@example.com
+  Cheapest : 378.0 EUR
+  Threshold: 400 EUR
+  Deal found! 378.0 EUR is under your 400 EUR target.
+  WhatsApp ✓
+  Email ✓  (1 recipient(s))
+
+──────────────────────────────────────────────────
+Istanbul (IST)
+  MAD -> IST = 322.0 EUR [2026-04-11 TO 2026-10-07] (Round Trip)
+
+  Cheapest : 322.0 EUR
+  Threshold: 300 EUR
+  No deal — 322.0 EUR is above the 300 EUR target.
+
+──────────────────────────────────────────────────
+Done.
 
 Press Enter to return to menu...
 ```
@@ -122,21 +135,20 @@ Input (Google Sheet via Sheety)
   └─► DataManager.get_destination_data()
         └─► list of {city, iataCode, lowestPrice}
 
-IATA Lookup (Amadeus Location API)
-  └─► FlightSearch.get_destination_code() / get_destination_codes()
-        └─► fills any blank iataCode fields
-        └─► DataManager.update_destination_codes() → writes back to Sheet
+IATA Codes
+  └─► Must be pre-filled in the sheet manually
+        └─► DataManager.update_destination_codes() writes back any newly fetched codes
 
-Flight Search (Amadeus Flight Offers API)
+Flight Search (Google Flights via SerpApi)
   └─► FlightSearch.check_flights(is_direct=True)
-        └─► if empty → retry with is_direct=False
+        └─► if empty → retry with is_direct=False (max_stopovers=2)
         └─► returns list[FlightData]
 
 Processing
   └─► find_cheapest_flight(flights) → FlightData
 
 Output (if price < threshold)
-  └─► Notifier.send_sms(message)
+  └─► Notifier.send_whatsapp(message)
   └─► DataManager.get_customer_emails()
         └─► Notifier.send_emails(message, recipients)
 ```
@@ -147,17 +159,18 @@ Output (if price < threshold)
 
 ### Both builds
 - Fetches destination list and price thresholds from Google Sheet
-- Auto-fills missing IATA codes via Amadeus and updates the sheet
 - Searches direct flights first; retries with stopovers if none found
-- Expands cities with no city code to individual airport codes
-- Sends SMS via Twilio when cheapest price is below threshold
+- Picks the cheapest offer and compares against the sheet threshold
+- Sends WhatsApp via Twilio when cheapest price is below threshold
 - Sends email to all registered users when price is below threshold
 
 ### Advanced-only
 - All URLs, limits, delays, and defaults isolated in `config.py`
 - `Notifier` is pure I/O — accepts message string + recipient list, no hidden fetches
+- WhatsApp message formatted with structured fields (price, dates, stops)
 - Absolute `load_dotenv` path works regardless of working directory
-- Clean separation: fetch → process → notify with no cross-module side effects
+- Clean separator output between each destination
+- WhatsApp and email failures caught independently
 
 ---
 
@@ -167,8 +180,8 @@ Output (if price < threshold)
 menu.py
 ├── 1 → original/main.py
 │         Initializes: DataManager, FlightSearch, NotificationManager
-│         Flow: fetch sheet → fill IATA → update sheet → search flights
-│               → pick cheapest → send SMS + emails if below threshold
+│         Flow: fetch sheet → search flights → pick cheapest
+│               → send WhatsApp + emails if below threshold
 │
 └── 2 → advanced/main.py
           Initializes: DataManager, FlightSearch, Notifier
@@ -193,18 +206,18 @@ flight-club/
 ├── original/                 # Course exercise (verbatim + path fixes)
 │   ├── main.py               # Orchestrator
 │   ├── data_manager.py       # Sheety API client
-│   ├── flight_search.py      # Amadeus API client
+│   ├── flight_search.py      # SerpApi client
 │   ├── flight_data.py        # FlightData model + find_cheapest_flight
-│   ├── notification_manager.py  # Twilio + SMTP sender
+│   ├── notification_manager.py  # Twilio WhatsApp + SMTP sender
 │   └── test_email.py         # SMTP connectivity test script
 │
 └── advanced/                 # Refactored build
     ├── config.py             # All constants
     ├── main.py               # Orchestrator
     ├── data_manager.py       # Sheety API client
-    ├── flight_search.py      # Amadeus API client
+    ├── flight_search.py      # SerpApi client
     ├── flight_data.py        # FlightData model + find_cheapest_flight
-    └── notifier.py           # Pure I/O notifier (SMS + email)
+    └── notifier.py           # Pure I/O notifier (WhatsApp + email)
 ```
 
 ---
@@ -215,11 +228,10 @@ flight-club/
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `__init__()` | — | Loads API credentials, fetches OAuth2 token |
-| `_get_new_token()` | `str` | Requests a new Amadeus bearer token |
-| `get_destination_code(city_name)` | `str` | Returns IATA city code or `"N/A"` |
-| `get_destination_codes(city_name)` | `list[str]` | Returns all airport codes for a city |
-| `check_flights(origin, dest, from_time, to_time, is_direct)` | `tuple[list[FlightData] \| None, list[dict] \| None]` | Queries flight offers; returns flights or error list |
+| `__init__()` | — | Loads SerpApi key from environment |
+| `get_destination_code(city_name)` | `str` | Not supported — returns `"N/A"` (add codes to sheet manually) |
+| `get_destination_codes(city_name)` | `list[str]` | Not supported — returns `[]` |
+| `check_flights(origin, dest, from_time, to_time, is_direct)` | `tuple[list[FlightData] \| None, list[dict] \| None]` | Queries Google Flights; returns flights or error list |
 
 ### `advanced/data_manager.py` — `DataManager`
 
@@ -236,7 +248,7 @@ flight-club/
 |--------|---------|-------------|
 | `FlightData.__init__(...)` | — | Stores price, airports, dates, stops, cities |
 | `FlightData.to_dict()` | `dict` | All fields as a dictionary |
-| `FlightData.as_string()` | `str` | Human-readable one-liner (e.g. `MAD → CDG = 49.99 EUR`) |
+| `FlightData.as_string()` | `str` | Human-readable one-liner (e.g. `MAD -> FRA = 378.0 EUR`) |
 | `find_cheapest_flight(flight_list)` | `FlightData` | Returns cheapest by price; null object if list empty |
 
 ### `advanced/notifier.py` — `Notifier`
@@ -244,7 +256,7 @@ flight-club/
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `__init__(email_subject, smtp_server, smtp_port)` | — | Initialises Twilio client and email config |
-| `send_sms(message_body)` | `None` | Sends SMS via Twilio; raises on failure |
+| `send_whatsapp(message_body)` | `None` | Sends WhatsApp via Twilio sandbox; raises on failure |
 | `send_emails(message_body, recipients)` | `None` | Sends email to each address via SMTP; raises on failure |
 
 ---
@@ -255,13 +267,11 @@ All in `advanced/config.py`:
 
 | Constant | Default | Description |
 |----------|---------|-------------|
-| `TOKEN_ENDPOINT` | Amadeus OAuth2 URL | Endpoint to fetch bearer token |
-| `IATA_ENDPOINT` | Amadeus Locations URL | IATA city/airport code lookup |
-| `FLIGHT_ENDPOINT` | Amadeus Flight Offers URL | Flight search endpoint |
+| `SERPAPI_ENDPOINT` | SerpApi search URL | Google Flights search endpoint |
 | `ORIGIN_CITY_IATA` | `"MAD"` | Fixed departure city (Madrid) |
 | `SEARCH_WINDOW_DAYS` | `180` | Days ahead for return date |
-| `MAX_FLIGHT_RESULTS` | `5` | Max offers per Amadeus query |
-| `IATA_LOOKUP_DELAY` | `1.5` | Seconds between IATA lookups (rate limit) |
+| `MAX_FLIGHT_RESULTS` | `5` | Max offers parsed per search |
+| `IATA_LOOKUP_DELAY` | `1.5` | Seconds between IATA lookups if used |
 | `DEFAULT_CURRENCY` | `"EUR"` | Currency for price display |
 | `EMAIL_SUBJECT` | `"✈️ Flight Deal Alert!"` | Email subject line |
 | `SMTP_SERVER_DEFAULT` | `"smtp.gmail.com"` | SMTP server |
@@ -276,9 +286,9 @@ All in `advanced/config.py`:
 ```json
 {
   "id": 2,
-  "city": "Paris",
-  "iataCode": "PAR",
-  "lowestPrice": 54
+  "city": "Frankfurt",
+  "iataCode": "FRA",
+  "lowestPrice": 400
 }
 ```
 
@@ -296,11 +306,11 @@ All in `advanced/config.py`:
 
 ```json
 {
-  "price": 49.99,
+  "price": 378.0,
   "origin": "MAD",
-  "destination": "CDG",
-  "out_date": "2025-11-03",
-  "return_date": "2025-11-10",
+  "destination": "FRA",
+  "out_date": "2026-04-11",
+  "return_date": "2026-10-07",
   "currency": "EUR",
   "trip_type": "round",
   "stop_overs": 0,
@@ -322,14 +332,11 @@ Copy `.env.example` → `.env` and fill in your credentials.
 | `SHEETY_USERS_ENDPOINT` | Yes | Sheety URL for the 'users' sheet |
 | `SHEETY_USERNAME` | Yes | Sheety Basic Auth username |
 | `SHEETY_PASSWORD` | Yes | Sheety Basic Auth password |
-| `API_KEY_AMADEUS` | Yes | Amadeus API key |
-| `SECRET_AMADEUS` | Yes | Amadeus API secret |
+| `SERPAPI_KEY` | Yes | SerpApi API key |
 | `TWILIO_ACCOUNT_SID` | Yes | Twilio Account SID |
 | `TWILIO_AUTH_TOKEN` | Yes | Twilio Auth Token |
-| `TWILIO_FROM` | Yes | Twilio sender number (E.164) |
-| `TWILIO_TO` | Yes | Your mobile number (E.164) |
-| `TWILIO_WHATSAPP_FROM` | Optional | WhatsApp sender (`whatsapp:+14155238886`) |
-| `TWILIO_WHATSAPP_TO` | Optional | Your WhatsApp number |
+| `TWILIO_WHATSAPP_FROM` | Yes | Twilio sandbox sender (`whatsapp:+14155238886`) |
+| `TWILIO_WHATSAPP_TO` | Yes | Your WhatsApp number (e.g. `whatsapp:+34611122334`) |
 | `CURRENCY` | Optional | Price currency code (default: `EUR`) |
 | `EMAIL_ADDRESS` | Yes | Gmail sender address |
 | `EMAIL_PASSWORD` | Yes | Gmail 16-char App Password |
@@ -340,21 +347,21 @@ Copy `.env.example` → `.env` and fill in your credentials.
 
 ## 12. Design Decisions
 
-**Amadeus test environment** — The free developer tier uses `test.api.amadeus.com`. Results are simulated but structurally identical to production. Switching to production requires changing three URL constants in `config.py`.
+**SerpApi over Amadeus** — The original course used the Amadeus test API, which was decommissioned in 2026. SerpApi scrapes Google Flights and returns real-time prices with a simple API key — no OAuth2 flow, no test/production environment split. The trade-off is 100 searches/month on the free tier (vs unlimited on Amadeus test), which covers ~5 full runs with 9 destinations.
 
-**City code → airport code fallback** — Some cities have no IATA city code (e.g. smaller destinations). The search first tries the city code; if Amadeus returns `N/A`, it queries for individual airport codes and searches each one. This maximises coverage without requiring manual data entry.
+**No IATA auto-lookup** — Amadeus provided a locations endpoint for resolving city names to IATA codes. SerpApi does not. Airport codes must be entered once in the Google Sheet. This is a one-time manual step, not a recurring cost.
 
-**Direct → stopover retry** — Direct-only searches fail silently for routes with no nonstop service. Retrying with `nonStop=false` recovers these routes at the cost of one extra API call per destination.
+**WhatsApp over SMS** — The Twilio WhatsApp sandbox is free and requires no phone number purchase. Standard SMS requires a paid Twilio number. For a personal project, WhatsApp delivers the same result at zero cost. The sandbox requires re-joining every ~72 hours of inactivity.
 
-**`IATA_LOOKUP_DELAY`** — Amadeus free tier enforces a rate limit. A 1.5s sleep between IATA lookups prevents HTTP 429 errors when the sheet has many destinations.
+**Direct → stopover retry** — Direct-only searches return no results for many long-haul routes. Retrying with `max_stopovers=2` recovers these at the cost of one extra API call per destination.
 
-**Notifier takes plain strings, not FlightData** — In the original build, `NotificationManager` formats the message internally using `FlightData`. This ties the notifier to the data model. In the advanced build, `main()` formats the string and passes it in — `Notifier` becomes a pure I/O class that can send any message, making it easy to change the format or reuse it elsewhere.
+**Structured WhatsApp message** — The message sent to WhatsApp is formatted with labelled fields (Price, Depart, Return, Stops) rather than the compact `as_string()` format, which is harder to read on a mobile notification.
 
-**Notifier raises on failure** — Instead of swallowing exceptions with `print(f"Failed: {e}")`, the advanced `Notifier` raises. `main()` catches each call independently so an SMS failure does not prevent email delivery (and vice versa).
+**Notifier takes plain strings, not FlightData** — In the original build, `NotificationManager` formats the message internally. This ties the notifier to the data model. In the advanced build, `main()` formats the string and passes it in — `Notifier` becomes a pure I/O class that can send any message.
 
-**Absolute `load_dotenv` path** — `load_dotenv()` with no argument resolves `.env` relative to the current working directory. If `main.py` is launched from a different directory (e.g. via `menu.py`), the `.env` is not found. Using `Path(__file__).parent.parent / ".env"` makes the path absolute and launch-directory-independent.
+**Notifier raises on failure** — `main()` catches WhatsApp and email calls independently, so a WhatsApp failure does not prevent email delivery and vice versa.
 
-**`sys.path.insert` in advanced modules** — Python's import system resolves modules relative to `sys.path`. Since `advanced/` is a subdirectory (not a package), sibling imports (`from config import ...`) require inserting the module's own directory at the front of `sys.path`.
+**Absolute `load_dotenv` path** — `load_dotenv()` with no argument resolves `.env` relative to the current working directory. Using `Path(__file__).parent.parent / ".env"` makes it launch-directory-independent.
 
 ---
 
@@ -363,7 +370,7 @@ Copy `.env.example` → `.env` and fill in your credentials.
 **Course:** 100 Days of Code — The Complete Python Pro Bootcamp (Dr. Angela Yu)
 **Day:** 40 — Capstone Part 2: Flight Club
 
-The project introduces multi-API orchestration: authenticating with OAuth2, reading and writing a Google Sheet via a REST wrapper (Sheety), chaining API responses across services, and delivering notifications through two independent channels. It builds on the OOP patterns from Days 16–20 and the API work from Days 33–36.
+The project introduces multi-API orchestration: reading and writing a Google Sheet via a REST wrapper (Sheety), chaining API responses across services, and delivering notifications through two independent channels. It builds on the OOP patterns from Days 16–20 and the API work from Days 33–36.
 
 ---
 
@@ -371,9 +378,9 @@ The project introduces multi-API orchestration: authenticating with OAuth2, read
 
 | Module | Used in | Purpose |
 |--------|---------|---------|
-| `requests` | `flight_search.py`, `data_manager.py` | HTTP calls to Amadeus and Sheety |
+| `requests` | `flight_search.py`, `data_manager.py` | HTTP calls to SerpApi and Sheety |
 | `python-dotenv` | all modules | Load credentials from `.env` |
-| `twilio` | `notifier.py` / `notification_manager.py` | Send SMS alerts |
+| `twilio` | `notifier.py` / `notification_manager.py` | Send WhatsApp alerts |
 | `smtplib` | `notifier.py` / `notification_manager.py` | Send email via Gmail SMTP |
 | `datetime` | `main.py` | Calculate departure and return date windows |
 | `pathlib` | all modules | Resolve `.env` and script paths portably |

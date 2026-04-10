@@ -21,6 +21,8 @@ from flight_search import FlightSearch
 from data_manager import DataManager
 from notifier import Notifier
 
+SEP = "─" * 50
+
 
 def main() -> None:
     data_manager = DataManager()
@@ -34,39 +36,39 @@ def main() -> None:
     # ── Step 1: Load destinations, fill any missing IATA codes ──────────────
     sheet_data = data_manager.get_destination_data()
 
-    for row in sheet_data:
-        if row["iataCode"] == "":
-            print(f"Fetching IATA code for {row['city']}...")
+    needs_update = [row for row in sheet_data if row["iataCode"] == ""]
+    if needs_update:
+        print("Syncing IATA codes...")
+        for row in needs_update:
             row["iataCode"] = flight_search.get_destination_code(row["city"])
             time.sleep(IATA_LOOKUP_DELAY)
-
-    data_manager.destination_data = sheet_data
-    data_manager.update_destination_codes()
+        data_manager.destination_data = sheet_data
+        data_manager.update_destination_codes()
+        print()
 
     # ── Step 2: Search flights for each destination ──────────────────────────
-    print(f"\nSearching round-trip flights from {ORIGIN_CITY_IATA}...\n")
-
     tomorrow = datetime.now() + timedelta(days=1)
     search_end = datetime.now() + timedelta(days=SEARCH_WINDOW_DAYS)
+
+    print(f"\nScanning flights from {ORIGIN_CITY_IATA}\n")
 
     for destination in sheet_data:
         code = destination["iataCode"]
         city_name = destination["city"]
         threshold = destination["lowestPrice"]
 
+        print(f"\n{SEP}\n{city_name} ({code})")
+
         if code == "N/A":
-            print(f"No IATA city code for {city_name}. Trying airport codes...")
             airport_codes = flight_search.get_destination_codes(city_name)
             if not airport_codes:
-                print(f"Skipping {city_name} (no airports found).")
+                print("  No airports found — skipped.")
                 continue
         else:
             airport_codes = [code]
 
         for airport_code in airport_codes:
-            print(f"Checking flights to {city_name} ({airport_code})...")
-
-            flights, error = flight_search.check_flights(
+            flights, _ = flight_search.check_flights(
                 origin_city_code=ORIGIN_CITY_IATA,
                 destination_city_code=airport_code,
                 from_time=tomorrow,
@@ -75,8 +77,7 @@ def main() -> None:
             )
 
             if not flights:
-                print("No direct flights. Retrying with stopovers...")
-                flights, error = flight_search.check_flights(
+                flights, _ = flight_search.check_flights(
                     origin_city_code=ORIGIN_CITY_IATA,
                     destination_city_code=airport_code,
                     from_time=tomorrow,
@@ -85,43 +86,50 @@ def main() -> None:
                 )
 
             if not flights:
-                print("No valid flight data.")
-                if error:
-                    for err in error:
-                        print(f"  Status {err.get('status', 'N/A')}: {err.get('title', 'Unknown')}")
+                print("  No flights found.")
                 continue
 
-            print("Found flight options:")
             for f in flights:
                 print(f"  {f.as_string()}")
 
             cheapest: FlightData = find_cheapest_flight(flights)
 
             if cheapest.price is None:
-                print("No valid price data after parsing.")
+                print("  Could not determine cheapest flight.")
                 continue
 
-            print(f"\nCheapest: {cheapest.as_string()}")
-            print(f"Threshold: {threshold} {DEFAULT_CURRENCY}")
+            print(f"\n  Cheapest : {cheapest.price} {DEFAULT_CURRENCY}")
+            print(f"  Threshold: {threshold} {DEFAULT_CURRENCY}")
 
             # ── Step 3: Notify if price beats threshold ──────────────────────
             if cheapest.price < threshold:
-                print("Price below threshold — sending notifications...")
-                message = f"Flight Deal Alert!\n{cheapest.as_string()}"
+                print(f"  Deal found! {cheapest.price} {DEFAULT_CURRENCY} is under your {threshold} {DEFAULT_CURRENCY} target.")
+                message = (
+                    f"✈️ Flight Deal Alert!\n\n"
+                    f"{ORIGIN_CITY_IATA} → {airport_code} ({city_name})\n"
+                    f"Price:  {cheapest.price} {DEFAULT_CURRENCY}\n"
+                    f"Depart: {cheapest.out_date}\n"
+                    f"Return: {cheapest.return_date}\n"
+                    f"Stops:  {cheapest.stop_overs}"
+                )
 
                 try:
-                    notifier.send_sms(message)
+                    notifier.send_whatsapp(message)
+                    print("  WhatsApp ✓")
                 except Exception as e:
-                    print(f"SMS failed: {e}")
+                    print(f"  WhatsApp failed: {e}")
 
                 try:
                     customers = data_manager.get_customer_emails()
                     emails = [c["email"] for c in customers if c["email"]]
                     notifier.send_emails(message, emails)
+                    print(f"  Email ✓  ({len(emails)} recipient(s))")
                 except Exception as e:
-                    print(f"Email failed: {e}")
+                    print(f"  Email failed: {e}")
             else:
-                print("Price above threshold — no notifications sent.")
+                print(f"  No deal — {cheapest.price} {DEFAULT_CURRENCY} is above the {threshold} {DEFAULT_CURRENCY} target.")
+
+    print(f"\n{SEP}\nDone.")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,5 @@
-# URLs — Amadeus API
-TOKEN_ENDPOINT = "https://test.api.amadeus.com/v1/security/oauth2/token"
-IATA_ENDPOINT = "https://test.api.amadeus.com/v1/reference-data/locations"
-FLIGHT_ENDPOINT = "https://test.api.amadeus.com/v2/shopping/flight-offers"
+# URLs — SerpApi Google Flights
+SERPAPI_ENDPOINT = "https://serpapi.com/search"
 
 # Search parameters
 ORIGIN_CITY_IATA = "MAD"

@@ -18,8 +18,8 @@ class Notifier:
             os.environ["TWILIO_ACCOUNT_SID"],
             os.environ["TWILIO_AUTH_TOKEN"],
         )
-        self._from_number: str = os.environ["TWILIO_FROM"]
-        self._to_number: str = os.environ["TWILIO_TO"]
+        self._from_number: str = os.environ["TWILIO_WHATSAPP_FROM"]
+        self._to_number: str = os.environ["TWILIO_WHATSAPP_TO"]
 
         self._email_address: str = os.environ["EMAIL_ADDRESS"]
         self._email_password: str = os.environ["EMAIL_PASSWORD"]
@@ -27,14 +27,14 @@ class Notifier:
         self._smtp_port = smtp_port
         self._email_subject = email_subject
 
-    def send_sms(self, message_body: str) -> None:
-        """Send an SMS via Twilio. Raises on failure."""
+    def send_whatsapp(self, message_body: str) -> None:
+        """Send a WhatsApp message via Twilio. Raises on failure."""
         message = self._twilio_client.messages.create(
             body=message_body,
             from_=self._from_number,
             to=self._to_number,
         )
-        print(f"SMS sent. SID: {message.sid}")
+        _ = message.sid  # confirm delivery
 
     def send_emails(self, message_body: str, recipients: List[str]) -> None:
         """Send the message body to each address in recipients via Gmail SMTP. Raises on failure."""
@@ -57,4 +57,3 @@ class Notifier:
                     to_addrs=recipient,
                     msg=msg.as_string(),
                 )
-                print(f"Email sent to {recipient}")
