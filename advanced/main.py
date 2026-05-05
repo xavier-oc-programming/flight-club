@@ -34,6 +34,7 @@ def main() -> None:
     )
 
     # ── Step 1: Load destinations, fill any missing IATA codes ──────────────
+    print("Fetching destinations from Google Sheet via Sheety...")
     sheet_data = data_manager.get_destination_data()
 
     needs_update = [row for row in sheet_data if row["iataCode"] == ""]
@@ -50,7 +51,22 @@ def main() -> None:
     tomorrow = datetime.now() + timedelta(days=1)
     search_end = datetime.now() + timedelta(days=SEARCH_WINDOW_DAYS)
 
-    print(f"\nScanning flights from {ORIGIN_CITY_IATA}\n")
+    # ── Upfront summary ─────────────────────────────────────────────────────
+    print(f"\n{'=' * 50}")
+    print(f"  ✈  FLIGHT CLUB — Deal Scanner")
+    print(f"{'=' * 50}")
+    print(f"  Origin  : {ORIGIN_CITY_IATA}")
+    print(f"  Window  : {tomorrow.strftime('%d %b %Y')} → {search_end.strftime('%d %b %Y')}  ({SEARCH_WINDOW_DAYS} days)")
+    print(f"  Currency: {DEFAULT_CURRENCY}")
+    print(f"\n  Destinations & price targets:")
+    print(f"  {'#':<4} {'City':<22} {'IATA':<6} {'Target':>10}")
+    print(f"  {'-'*4} {'-'*22} {'-'*6} {'-'*10}")
+    for i, dest in enumerate(sheet_data, 1):
+        code_display = dest['iataCode'] if dest['iataCode'] else "—"
+        print(f"  {i:<4} {dest['city']:<22} {code_display:<6} {dest['lowestPrice']:>8} {DEFAULT_CURRENCY}")
+    print(f"{'=' * 50}\n")
+
+    print(f"Scanning flights from {ORIGIN_CITY_IATA}\n")
 
     for destination in sheet_data:
         code = destination["iataCode"]
