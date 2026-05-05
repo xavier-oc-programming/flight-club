@@ -99,6 +99,23 @@ python menu.py
 
 Your choice: 2
 
+Fetching destinations from Google Sheet via Sheety...
+
+==================================================
+  ✈  FLIGHT CLUB — Deal Scanner
+==================================================
+  Origin  : MAD
+  Window  : 06 May 2026 → 02 Nov 2026  (180 days)
+  Currency: EUR
+
+  Destinations & price targets:
+  #    City                   IATA       Target
+  ---- ---------------------- ------   ----------
+  1    Frankfurt              FRA           400 EUR
+  2    Istanbul               IST           300 EUR
+
+==================================================
+
 Scanning flights from MAD
 
 ──────────────────────────────────────────────────
@@ -166,6 +183,7 @@ Output (if price < threshold)
 
 ### Advanced-only
 - All URLs, limits, delays, and defaults isolated in `config.py`
+- Startup summary: prints origin, date window, currency, and a table of all destinations with price targets before searching
 - `Notifier` is pure I/O — accepts message string + recipient list, no hidden fetches
 - WhatsApp message formatted with structured fields (price, dates, stops)
 - Absolute `load_dotenv` path works regardless of working directory
